@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeGen — Générateur de Code</title>
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=dm-mono:300,400,500|syne:400,600,700,800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0b;
+      --surface: #111113;
+      --border: #1e1e22;
+      --border-hover: #2e2e35;
+      --text: #e8e8ec;
+      --muted: #5a5a6a;
+      --accent: #c8ff57;
+      --accent-dim: rgba(200,255,87,0.12);
+      --accent-glow: rgba(200,255,87,0.25);
+      --danger: #ff4d6d;
+      --radius: 12px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+      overflow-x: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(200,255,87,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,255,87,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(200,255,87,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 540px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .header .badge {
+      display: inline-block;
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid rgba(200,255,87,0.2);
+      padding: 0.3rem 0.9rem;
+      border-radius: 100px;
+      margin-bottom: 1rem;
+    }
+
+    .header h1 {
+      font-size: clamp(2rem, 6vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--text);
+    }
+
+    .header h1 span {
+      color: var(--accent);
+    }
+
+    .header p {
+      margin-top: 0.6rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 400;
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    /* Output Display */
+    .output-section {
+      margin-bottom: 1.75rem;
+    }
+
+    .output-box {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.2rem 4.5rem 1.2rem 1.4rem;
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .output-box:hover { border-color: var(--border-hover); }
+
+    .output-box.flash {
+      animation: flash 0.35s ease;
+    }
+
+    #code-display {
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: clamp(1rem, 3vw, 1.3rem);
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      word-break: break-all;
+      line-height: 1.5;
+      transition: opacity 0.15s;
+    }
+
+    #code-display.empty {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 300;
+      letter-spacing: 0.02em;
+    }
+
+    .copy-btn {
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .copy-btn svg { width: 14px; height: 14px; }
+
+    /* Strength bar */
+    .strength-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .strength-bars {
+      display: flex;
+      gap: 3px;
+      flex: 1;
+    }
+
+    .strength-bar {
+      height: 3px;
+      flex: 1;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.4s ease;
+    }
+
+    .strength-label {
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 1.75rem 0;
+    }
+
+    /* Controls */
+    .control-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.65rem;
+    }
+
+    .control-label span {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .control-label .value-badge {
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.78rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 0.15rem 0.6rem;
+      border-radius: 4px;
+      font-weight: 400;
+    }
+
+    /* Range Slider */
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      position: relative;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 3px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 12px var(--accent-glow);
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+    }
+
+    /* Complexity Selector */
+    .complexity-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .complexity-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.5rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.18s;
+    }
+
+    .complexity-btn:hover {
+      border-color: var(--border-hover);
+    }
+
+    .complexity-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .complexity-btn .c-icon {
+      font-size: 1.1rem;
+      margin-bottom: 0.2rem;
+      display: block;
+    }
+
+    .complexity-btn .c-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: block;
+    }
+
+    .complexity-btn.active .c-name {
+      color: var(--accent);
+    }
+
+    /* Toggle options */
+    .toggles-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      cursor: pointer;
+      transition: all 0.18s;
+      user-select: none;
+    }
+
+    .toggle-item:hover { border-color: var(--border-hover); }
+
+    .toggle-item.on {
+      border-color: rgba(200,255,87,0.3);
+      background: var(--accent-dim);
+    }
+
+    .toggle-item .t-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .toggle-item.on .t-label { color: var(--accent); }
+
+    .toggle-switch {
+      width: 28px;
+      height: 16px;
+      background: var(--border);
+      border-radius: 8px;
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle-item.on .toggle-switch {
+      background: var(--accent);
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: white;
+      border-radius: 50%;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+    }
+
+    .toggle-item.on .toggle-switch::after {
+      transform: translateX(12px);
+    }
+
+    /* Generate Button */
+    .generate-btn {
+      width: 100%;
+      margin-top: 1.75rem;
+      padding: 1rem;
+      background: var(--accent);
+      color: #0a0a0b;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Syne', 'Segoe UI', system-ui, sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .generate-btn:hover {
+      background: #d9ff6e;
+      box-shadow: 0 0 30px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+
+    .generate-btn:active { transform: translateY(0); }
+
+    .generate-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.5s;
+    }
+
+    .generate-btn:hover::before { transform: translateX(100%); }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+      opacity: 0.7;
+    }
+
+    /* Animations */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes flash {
+      0%   { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+      100% { border-color: var(--border); box-shadow: none; }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(10,10,11,0.4);
+      border-top-color: #0a0a0b;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    /* History section */
+    .history-section {
+      margin-top: 1rem;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .history-header span {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    .clear-btn {
+      background: none;
+      border: none;
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+
+    .clear-btn:hover { color: var(--danger); }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.8rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      animation: fadeUp 0.2s ease both;
+    }
+
+    .history-item:hover { border-color: var(--border-hover); }
+
+    .history-code {
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.78rem;
+      color: var(--text);
+      letter-spacing: 0.06em;
+    }
+
+    .history-meta {
+      font-family: 'DM Mono', 'Courier New', 'Consolas', monospace;
+      font-size: 0.62rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <header class="header">
+    <div class="badge">// Générateur de code</div>
+    <h1>Code<span>Gen</span></h1>
+    <p>Secure. Fast. Customizable.</p>
+  </header>
+
+  <div class="card">
+
+    <!-- Output -->
+    <div class="output-section">
+      <div class="output-box" id="output-box">
+        <span id="code-display" class="empty">Appuyer sur Générer…</span>
+        <button class="copy-btn" id="copy-btn" title="Copier">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="strength-row">
+        <div class="strength-bars">
+          <div class="strength-bar" id="sb1"></div>
+          <div class="strength-bar" id="sb2"></div>
+          <div class="strength-bar" id="sb3"></div>
+          <div class="strength-bar" id="sb4"></div>
+          <div class="strength-bar" id="sb5"></div>
+        </div>
+        <div class="strength-label" id="strength-label">—</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Length -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Longueur</span>
+        <div class="value-badge" id="length-val">16</div>
+      </div>
+      <input type="range" id="length-range" min="4" max="64" value="16" />
+    </div>
+
+    <!-- Complexity -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Complexité</span>
+      </div>
+      <div class="complexity-grid">
+        <button class="complexity-btn" data-level="low">
+          <span class="c-icon">🌿</span>
+          <span class="c-name">Faible</span>
+        </button>
+        <button class="complexity-btn active" data-level="medium">
+          <span class="c-icon">⚡</span>
+          <span class="c-name">Moyen</span>
+        </button>
+        <button class="complexity-btn" data-level="high">
+          <span class="c-icon">🔥</span>
+          <span class="c-name">Élevé</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Options</span>
+      </div>
+      <div class="toggles-grid">
+        <div class="toggle-item on" data-key="uppercase">
+          <span class="t-label">Maj (A-Z)</span>
+          <div class="toggle-switch"></div>
+        </div>
+        <div class="toggle-item on" data-key="lowercase">
+          <span class="t-label">Min (a-z)</span>
+          <div class="toggle-switch"></div>
+        </div>
+        <div class="toggle-item on" data-key="digits">
+          <span class="t-label">Chiffres</span>
+          <div class="toggle-switch"></div>
+        </div>
+        <div class="toggle-item" data-key="special">
+          <span class="t-label">Spéciaux</span>
+          <div class="toggle-switch"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generate Button -->
+    <button class="generate-btn" id="generate-btn">
+      Générer le Code
+    </button>
+
+  </div>
+
+  <!-- History -->
+  <div class="history-section" id="history-section" style="display:none;">
+    <div class="card">
+      <div class="history-header">
+        <span>Historique</span>
+        <button class="clear-btn" id="clear-history">Effacer</button>
+      </div>
+      <div class="history-list" id="history-list"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>Généré côté client — aucune donnée transmise</p>
+  </footer>
+
+</div>
+
+<script>
+  // ── State ──
+  const state = {
+    length: 16,
+    complexity: 'medium',
+    uppercase: true,
+    lowercase: true,
+    digits: true,
+    special: false,
+  };
+  const history = [];
+
+  // ── Char sets ──
+  const CHARS = {
+    uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    lowercase: 'abcdefghijklmnopqrstuvwxyz',
+    digits:    '0123456789',
+    special:   '!@#$%^&*()_+-=[]{}|;:,.<>?',
+  };
+
+  // ── Complexity modifiers ──
+  const COMPLEXITY_SETS = {
+    low:    ['lowercase'],
+    medium: ['uppercase', 'lowercase', 'digits'],
+    high:   ['uppercase', 'lowercase', 'digits', 'special'],
+  };
+
+  // ── Generate ──
+  function generate() {
+    // Build charset
+    let charset = '';
+    let guaranteed = [];
+    const activeOptions = ['uppercase','lowercase','digits','special'].filter(k => state[k]);
+
+    // Apply complexity override
+    const forced = COMPLEXITY_SETS[state.complexity];
+
+    for (const key of ['uppercase','lowercase','digits','special']) {
+      if (state[key] || forced.includes(key)) {
+        charset += CHARS[key];
+        if (state[key]) guaranteed.push(CHARS[key][Math.floor(Math.random() * CHARS[key].length)]);
+      }
+    }
+
+    if (!charset) {
+      charset = CHARS.lowercase;
+      guaranteed = [CHARS.lowercase[0]];
+    }
+
+    // Fill remaining
+    const arr = new Uint32Array(state.length);
+    crypto.getRandomValues(arr);
+    const result = Array.from(arr).map(n => charset[n % charset.length]);
+
+    // Inject guaranteed chars at random positions
+    guaranteed.slice(0, Math.min(guaranteed.length, state.length)).forEach((c, i) => {
+      const pos = Math.floor(Math.random() * state.length);
+      result[pos] = c;
+    });
+
+    return result.join('');
+  }
+
+  // ── Strength ──
+  function computeStrength(code) {
+    let score = 0;
+    if (/[a-z]/.test(code)) score++;
+    if (/[A-Z]/.test(code)) score++;
+    if (/[0-9]/.test(code)) score++;
+    if (/[^a-zA-Z0-9]/.test(code)) score++;
+    if (code.length >= 16) score++;
+    if (code.length >= 32) score++;
+    const capped = Math.min(score, 5);
+    return capped;
+  }
+
+  const colors = ['#ff4d6d','#ff9e3d','#ffe066','#8eecf5','#c8ff57'];
+  const labels = ['Très faible','Faible','Moyen','Fort','Très fort'];
+
+  function updateStrength(code) {
+    const score = computeStrength(code);
+    const bars = [1,2,3,4,5].map(i => document.getElementById('sb'+i));
+    bars.forEach((bar, i) => {
+      bar.style.background = i < score ? colors[score - 1] : 'var(--border)';
+    });
+    document.getElementById('strength-label').textContent = labels[score - 1] || '—';
+    document.getElementById('strength-label').style.color = colors[score - 1] || 'var(--muted)';
+  }
+
+  // ── UI: Length slider ──
+  const lengthRange = document.getElementById('length-range');
+  const lengthVal = document.getElementById('length-val');
+  lengthRange.addEventListener('input', () => {
+    state.length = +lengthRange.value;
+    lengthVal.textContent = state.length;
+  });
+
+  // ── UI: Complexity ──
+  document.querySelectorAll('.complexity-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.complexity-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.complexity = btn.dataset.level;
+    });
+  });
+
+  // ── UI: Toggles ──
+  document.querySelectorAll('.toggle-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const key = item.dataset.key;
+      state[key] = !state[key];
+      item.classList.toggle('on', state[key]);
+    });
+  });
+
+  // ── UI: Generate ──
+  const generateBtn = document.getElementById('generate-btn');
+  const codeDisplay = document.getElementById('code-display');
+  const outputBox = document.getElementById('output-box');
+
+  generateBtn.addEventListener('click', () => {
+    generateBtn.innerHTML = '<span class="spinner"></span>';
+    generateBtn.disabled = true;
+
+    setTimeout(() => {
+      const code = generate();
+      codeDisplay.textContent = code;
+      codeDisplay.classList.remove('empty');
+      outputBox.classList.remove('flash');
+      void outputBox.offsetWidth;
+      outputBox.classList.add('flash');
+      updateStrength(code);
+      addToHistory(code);
+
+      generateBtn.innerHTML = 'Générer le Code';
+      generateBtn.disabled = false;
+    }, 300);
+  });
+
+  // ── Copy ──
+  const copyBtn = document.getElementById('copy-btn');
+  copyBtn.addEventListener('click', () => {
+    const code = codeDisplay.textContent;
+    if (!code || codeDisplay.classList.contains('empty')) return;
+    navigator.clipboard.writeText(code).then(() => {
+      copyBtn.classList.add('copied');
+      copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      setTimeout(() => {
+        copyBtn.classList.remove('copied');
+        copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+      }, 1800);
+    });
+  });
+
+  // ── History ──
+  function addToHistory(code) {
+    history.unshift({ code, time: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}) });
+    if (history.length > 10) history.pop();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const section = document.getElementById('history-section');
+    const list = document.getElementById('history-list');
+    section.style.display = history.length ? 'block' : 'none';
+    list.innerHTML = '';
+    history.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'history-item';
+      el.innerHTML = `<span class="history-code">${item.code}</span><span class="history-meta">${item.time}</span>`;
+      el.addEventListener('click', () => {
+        codeDisplay.textContent = item.code;
+        codeDisplay.classList.remove('empty');
+        updateStrength(item.code);
+        navigator.clipboard.writeText(item.code);
+      });
+      list.appendChild(el);
+    });
+  }
+
+  document.getElementById('clear-history').addEventListener('click', () => {
+    history.length = 0;
+    renderHistory();
+  });
+</script>
+</body>
+</html>
